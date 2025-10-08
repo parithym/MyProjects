@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Details</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #34495e;
+            --accent: #3498db;
+            --success: #2ecc71;
+            --warning: #f39c12;
+            --danger: #e74c3c;
+            --light: #ecf0f1;
+            --dark: #2c3e50;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Header -->
+    <header class="bg-white shadow-md py-4 px-6 flex justify-between items-center sticky top-0 z-50">
+        <h1 class="text-2xl font-bold text-gray-800">Patient Dashboard</h1>
+        <a href="/" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors">
+            &larr; Back to Search
+        </a>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-4 md:p-8">
+        <div id="loading" class="text-center text-gray-500 font-semibold text-lg mt-10">
+            <div class="animate-spin inline-block w-8 h-8 border-4 border-t-4 border-gray-200 rounded-full border-t-blue-500"></div>
+            <p class="mt-2">Loading patient data...</p>
+        </div>
+        
+        <div id="dashboard-content" class="hidden">
+            <!-- Patient Header -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-8 flex items-center justify-between">
+                <div>
+                    <h2 class="text-3xl font-bold text-gray-800" id="patient-name"></h2>
+                    <p class="text-gray-500 text-sm" id="patient-id-display"></p>
+                </div>
+            </div>
+
+            <!-- Vitals and Alerts Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Vitals Cards -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Heart Rate</h3>
+                    <p class="text-4xl font-bold text-blue-600" id="heart-rate">--</p>
+                    <p class="text-gray-500 mt-1">bpm</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Blood Pressure</h3>
+                    <p class="text-4xl font-bold text-blue-600" id="blood-pressure">--/--</p>
+                    <p class="text-gray-500 mt-1">mmHg</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Temperature</h3>
+                    <p class="text-4xl font-bold text-blue-600" id="temperature">--</p>
+                    <p class="text-gray-500 mt-1">&deg;C</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Oxygen Saturation</h3>
+                    <p class="text-4xl font-bold text-blue-600" id="oxygen-saturation">--</p>
+                    <p class="text-gray-500 mt-1">%</p>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <!-- Heart Rate Chart -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Heart Rate Trend</h3>
+                    <canvas id="heartRateChart"></canvas>
+                </div>
+                <!-- Blood Pressure Chart -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Blood Pressure Trend</h3>
+                    <canvas id="bloodPressureChart"></canvas>
+                </div>
+                <!-- Temperature & Oxygen Chart -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Temperature &amp; Oxygen Trend</h3>
+                    <canvas id="otherVitalsChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Alerts Section -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    Active Alerts
+                    <span id="alert-count" class="ml-2 text-sm bg-red-500 text-white font-bold px-2 py-1 rounded-full">0</span>
+                </h3>
+                <div id="alerts-list">
+                    <p class="text-gray-500" id="no-alerts-message">No active alerts for this patient.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const patientId = urlParams.get('id');
+
+            if (!patientId) {
+                document.getElementById('loading').innerHTML = '<p class="text-red-500">No patient ID provided. Please go back and enter one.</p>';
+                return;
+            }
+
+            document.getElementById('patient-id-display').textContent = `Patient ID: ${patientId}`;
+            fetchPatientData(patientId);
+        });
+
+        async function fetchPatientData(patientId) {
+            try {
+                const response = await axios.get(`/api/patient/${patientId}`);
+                const data = response.data;
+
+                if (!data.latest_vital) {
+                    document.getElementById('loading').innerHTML = '<p class="text-red-500">Patient not found or no vital data available.</p>';
+                    return;
+                }
+
+                updateDashboard(data);
+                renderCharts(data.chart_data);
+                renderAlerts(data.alerts);
+
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('dashboard-content').classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error fetching patient data:", error);
+                document.getElementById('loading').innerHTML = '<p class="text-red-500">Error fetching data. Please try again.</p>';
+            }
+        }
+
+        function updateDashboard(data) {
+            const latest = data.latest_vital;
+            document.getElementById('patient-name').textContent = data.name;
+            document.getElementById('heart-rate').textContent = latest.heart_rate || '--';
+            document.getElementById('blood-pressure').textContent = `${latest.blood_pressure_systolic || '--'}/${latest.blood_pressure_diastolic || '--'}`;
+            document.getElementById('temperature').textContent = latest.temperature || '--';
+            document.getElementById('oxygen-saturation').textContent = latest.oxygen_saturation || '--';
+        }
+
+        function renderCharts(chartData) {
+            // Heart Rate Chart
+            new Chart(document.getElementById('heartRateChart'), {
+                type: 'line',
+                data: {
+                    labels: chartData.timestamps,
+                    datasets: [{
+                        label: 'Heart Rate (bpm)',
+                        data: chartData.heart_rate,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgb(54, 162, 235)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Blood Pressure Chart
+            new Chart(document.getElementById('bloodPressureChart'), {
+                type: 'line',
+                data: {
+                    labels: chartData.timestamps,
+                    datasets: [
+                        {
+                            label: 'Systolic',
+                            data: chartData.blood_pressure_systolic,
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.3
+                        },
+                        {
+                            label: 'Diastolic',
+                            data: chartData.blood_pressure_diastolic,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Temperature & Oxygen Saturation Chart
+            new Chart(document.getElementById('otherVitalsChart'), {
+                type: 'line',
+                data: {
+                    labels: chartData.timestamps,
+                    datasets: [
+                        {
+                            label: 'Temperature (°C)',
+                            data: chartData.temperature,
+                            borderColor: 'rgb(255, 159, 64)',
+                            backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                            borderWidth: 2,
+                            yAxisID: 'yTemp',
+                            tension: 0.3
+                        },
+                        {
+                            label: 'Oxygen Saturation (%)',
+                            data: chartData.oxygen_saturation,
+                            borderColor: 'rgb(153, 102, 255)',
+                            backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                            borderWidth: 2,
+                            yAxisID: 'yOxy',
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        yTemp: {
+                            type: 'linear',
+                            display: 'auto',
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Temperature'
+                            }
+                        },
+                        yOxy: {
+                            type: 'linear',
+                            display: 'auto',
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Oxy. Saturation'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderAlerts(alerts) {
+            const alertsList = document.getElementById('alerts-list');
+            const alertCount = document.getElementById('alert-count');
+            
+            alertsList.innerHTML = ''; // Clear previous alerts
+            alertCount.textContent = alerts.length;
+
+            if (alerts.length === 0) {
+                document.getElementById('no-alerts-message').style.display = 'block';
+            } else {
+                document.getElementById('no-alerts-message').style.display = 'none';
+                alerts.forEach(alert => {
+                    const alertItem = document.createElement('div');
+                    alertItem.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-2';
+                    alertItem.innerHTML = `
+                        <strong class="font-bold">Alert:</strong>
+                        <span class="block sm:inline">${alert.alerts.join(', ')}</span>
+                        <span class="text-sm block sm:inline mt-1 sm:mt-0"> (Priority: ${alert.priority})</span>
+                    `;
+                    alertsList.appendChild(alertItem);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
